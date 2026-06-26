@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     
     # Infrastructure URLs
-    DATABASE_URL: str = "postgresql://awaaz_dev:password_change_me_2026@localhost:5432/awaaz_spatial_db"
-    REDIS_URL: str = "redis://localhost:6379/0"
+    DATABASE_URL: str = "postgresql://awaaz_dev:password_change_me_2026@localhost:5433/awaaz_spatial_db"
+    REDIS_URL: str = "redis://localhost:6380/0"
     
     # AI Core
     GEMINI_API_KEY: str
