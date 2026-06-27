@@ -6,7 +6,7 @@ from app.db.base_class import Base
 
 from app.models.user import User
 from app.models.route import Incident, ColdStartPrior
-from app.api.v1 import routes, legal, telemetry, live_alerts, escalation
+from app.api.v1 import routes, legal, telemetry, live_alerts, escalation, evidence_bridge
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
@@ -36,3 +36,4 @@ app.include_router(legal.router, prefix=settings.API_V1_STR + "/legal", tags=["L
 app.include_router(telemetry.router, prefix=settings.API_V1_STR + "/telemetry", tags=["Telemetry Monitoring"])
 app.include_router(live_alerts.router, prefix=settings.API_V1_STR + "/alerts", tags=["Live Alerts"])
 app.include_router(escalation.router, prefix=settings.API_V1_STR + "/escalation", tags=["Emergency Escalation"])
+app.include_router(evidence_bridge.router, prefix="/api/v1/bridge", tags=["Evidence & ML"])
