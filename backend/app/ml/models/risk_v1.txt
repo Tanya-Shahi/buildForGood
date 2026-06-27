@@ -6,7 +6,7 @@ label_index=0
 max_feature_idx=6
 objective=regression
 feature_names=latitude longitude hour_of_day is_weekend street_lit commercial_density recent_incidents_count
-feature_infos=[26.108108399999999:26.207634899999999] [91.637285300000002:91.818208299999995] [0:23] [0:1] [0:1] [0.10000000000000001:0.90000000000000002] [0:5]
+feature_infos=none none none none none none none
 tree_sizes=2748 2933 2932 2935 2942 2889 2946 2857 2954 2880 2900 2892 2899 2952 2877 2957 2953 2950 2952 2957 2947 2897 2955 2960 2890 2883 2867 2897 2857 2950 2944 2885 2884 2869 2893 2946 2892 2934 2872 2943 2931 2951 2898 2878 2947 2925 2952 2932 2947 2957 2903 2960 2975 2967 2980 2869 2922 2917 2946 2934 2980 2975 2900 2941 2904 2886 2933 2962 2937 2928 2947 2913 2875 2859 2891 2928 2872 2927 2925 2881 2941 2907 2917 2896 2945 2949 2886 2971 2950 2936 2929 2994 2966 2910 2908 2892 2936 2947 2928 2960 2922 2926 2908 2954 2926 2910 2905 2904 2900 2920 2934 2929 2911 2819 2926 2860 2904 2873 2909 2884 2898 2922 2867 2890 2923 2854 2933 2902 2860 2813 2900 2923 2839 2893 2914 2917 2893 2873 2878 2847 2868 2903
 
 Tree=0
@@ -2721,14 +2721,14 @@ street_lit=151
 parameters:
 [boosting: gbdt]
 [objective: regression]
-[metric: rmse]
+[metric: l2]
 [tree_learner: serial]
 [device_type: cpu]
 [data_sample_strategy: bagging]
 [data: ]
 [valid: ]
-[num_iterations: 500]
-[learning_rate: 0.05]
+[num_iterations: 5]
+[learning_rate: 0.1]
 [num_leaves: 31]
 [num_threads: 0]
 [seed: 0]
@@ -2744,7 +2744,7 @@ parameters:
 [neg_bagging_fraction: 1]
 [bagging_freq: 0]
 [bagging_seed: 3]
-[feature_fraction: 0.8]
+[feature_fraction: 1]
 [feature_fraction_bynode: 1]
 [feature_fraction_seed: 2]
 [extra_trees: 0]
