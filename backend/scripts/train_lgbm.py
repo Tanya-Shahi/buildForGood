@@ -34,5 +34,9 @@ model = lgb.train(
 )
 
 # 4. Save the compiled model to your services folder
-joblib.dump(model, 'app/services/lgbm_risk_model.pkl')
-print("Model trained and saved successfully.")
+model_dir = "../app/ml/models"
+os.makedirs(model_dir, exist_ok=True)
+model_path = f"{model_dir}/risk_v1.txt"
+
+model.save_model(model_path)
+print(f"Model trained and saved natively for incremental learning to {model_path}.")
