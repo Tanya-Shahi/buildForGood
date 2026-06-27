@@ -1,10 +1,35 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from app.services.fusion_engine import FusionEngine
+from app.services.connection_manager import manager  # Importing your new manager!
 
 router = APIRouter()
 
-# The payload schema expected from the mobile device
+# ---------------------------------------------------------
+# 1. THE WEBSOCKET LISTENER (React Native connects here)
+# ---------------------------------------------------------
+@router.websocket("/ws/{user_id}")
+async def user_websocket_endpoint(websocket: WebSocket, user_id: str):
+    """
+    The mobile app opens a connection to this endpoint as soon as the user logs in.
+    It stays open silently in the background, waiting for push alerts.
+    """
+    await manager.connect(websocket, user_id)
+    try:
+        while True:
+            # We keep the connection alive and listen for any incoming messages.
+            # In the future, the app can send a "CANCEL_SOS" message here.
+            data = await websocket.receive_text()
+            print(f"Received message from {user_id}: {data}")
+            
+    except WebSocketDisconnect:
+        manager.disconnect(user_id)
+        print(f"User {user_id} disconnected from WebSocket.")
+
+
+# ---------------------------------------------------------
+# 2. THE SENSOR SYNC & TRIGGER (The Fusion Engine)
+# ---------------------------------------------------------
 class SensorPayload(BaseModel):
     user_id: str
     route_deviation: bool = False
@@ -15,11 +40,8 @@ class SensorPayload(BaseModel):
 @router.post("/sync")
 async def sync_device_sensors(payload: SensorPayload):
     """
-    Ingests high-frequency sensor spikes from the mobile app, passes them to 
-    the Fusion Engine, and triggers WebSockets if a multi-sensor threat is detected.
+    Ingests high-frequency sensor spikes from the mobile app.
     """
-    # Convert Pydantic model to a dictionary, excluding the user_id so 
-    # we only pass the boolean sensor flags to the engine.
     flags = payload.model_dump(exclude={"user_id"})
     
     is_critical, active_triggers, score = FusionEngine.evaluate_threat(
@@ -28,9 +50,17 @@ async def sync_device_sensors(payload: SensorPayload):
     )
     
     if is_critical:
-        # TODO: Trigger your WebSocket connection here to push the 10-second 
-        # confirmation/cancel window down to the user's screen.
-        print(f"🚨 WEBSOCKET TRIGGER: Sending confirmation window to {payload.user_id}")
+        # Construct the payload the mobile app needs to render the warning UI
+        alert_payload = {
+            "type": "CRITICAL_ESCALATION_WARNING",
+            "message": "Corroborated threat detected. Initiating SOS sequence.",
+            "countdown_seconds": 10,
+            "active_triggers": active_triggers
+        }
+        
+        # 🔥 Push the alert down the WebSocket directly to this specific user's phone
+        await manager.send_personal_alert(alert_payload, payload.user_id)
+        print(f"🚨 WEBSOCKET PUSHED: Alert sent to {payload.user_id}'s device.")
 
     return {
         "status": "evaluated",
