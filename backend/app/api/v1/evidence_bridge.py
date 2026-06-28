@@ -12,11 +12,9 @@ router = APIRouter()
 async def archive_sos_dossier(
     dossier: dict, 
     db: Session = Depends(deps.get_db),
-    current_user: str = Depends(get_current_user) # 🔥 Secure archive
+    current_user: str = Depends(get_current_user) 
 ):
     """Saves the JSON permanently to PostgreSQL."""
-    
-    # Safely extract location to prevent early-SOS crashes (Fixed Bug 1.4)
     loc = dossier.get("last_known_location")
     if not loc or "lat" not in loc or "lon" not in loc:
         raise HTTPException(
@@ -42,9 +40,9 @@ async def archive_sos_dossier(
 @router.post("/verify/{incident_id}")
 async def verify_incident_and_learn(
     incident_id: str, 
-    background_tasks: BackgroundTasks, # 🔥 FIX: Async unblocking
+    background_tasks: BackgroundTasks, 
     db: Session = Depends(deps.get_db),
-    current_user: str = Depends(get_current_user) # 🔥 FIX: Security
+    current_user: str = Depends(get_current_user) 
 ):
     incident = db.query(IncidentLog).filter(IncidentLog.incident_id == incident_id).first()
     if not incident:
@@ -55,7 +53,7 @@ async def verify_incident_and_learn(
         
     incident.is_verified = True
     
-    # 🔥 FIX: Offload the heavy model training to the background
+    # Offload the heavy model training to the background
     current_hour = datetime.utcnow().hour
     background_tasks.add_task(
         MLFeedbackService.integrate_verified_incident,
@@ -64,10 +62,40 @@ async def verify_incident_and_learn(
         time_of_day_hour=current_hour
     )
     
-    incident.ml_integrated = True # Optimistically marked as True since it's queued
+    incident.ml_integrated = True 
     db.commit()
     
     return {
         "status": "Verified", 
         "message": "Incident verified. AI model retraining queued in background."
     }
+
+# ---------------------------------------------------------
+# 🔥 NEW: NGO DASHBOARD ROUTE
+# ---------------------------------------------------------
+@router.get("/dashboard/sos-events")
+async def fetch_ngo_dashboard_events(
+    limit: int = 50,
+    db: Session = Depends(deps.get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """
+    [P1] Tier-2 Responder Dashboard: Fetches all escalated SOS events 
+    for NGOs/Police to view on a map and take action.
+    """
+    # Fetch logs ordered by the most recent emergency first
+    logs = db.query(IncidentLog).order_by(IncidentLog.created_at.desc()).limit(limit).all()
+    
+    return [
+        {
+            "incident_id": log.incident_id,
+            "user_id": log.user_id,
+            "latitude": log.latitude,
+            "longitude": log.longitude,
+            "is_verified": log.is_verified,
+            "ml_integrated": log.ml_integrated,
+            "timestamp": log.created_at,
+            "evidence_dossier": log.evidence_payload 
+        }
+        for log in logs
+    ]
