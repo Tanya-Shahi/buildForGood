@@ -1,8 +1,9 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from pydantic import BaseModel
 from app.services.fusion_engine import FusionEngine
-from app.services.connection_manager import manager  # Importing your new manager!
-from .escalation import start_escalation_countdown   # 🔥 NEW: Imported the escalation trigger
+from app.services.connection_manager import manager
+from .escalation import start_escalation_countdown
+from app.api.deps import get_current_user  # 🔥 NEW: Auth dependency
 
 router = APIRouter()
 
@@ -18,8 +19,6 @@ async def user_websocket_endpoint(websocket: WebSocket, user_id: str):
     await manager.connect(websocket, user_id)
     try:
         while True:
-            # We keep the connection alive and listen for any incoming messages.
-            # In the future, the app can send a "CANCEL_SOS" message here.
             data = await websocket.receive_text()
             print(f"Received message from {user_id}: {data}")
             
@@ -39,7 +38,10 @@ class SensorPayload(BaseModel):
     duress_pin: bool = False
 
 @router.post("/sync")
-async def sync_device_sensors(payload: SensorPayload):
+async def sync_device_sensors(
+    payload: SensorPayload,
+    current_user: str = Depends(get_current_user)  # 🔥 FIX: Endpoint locked down
+):
     """
     Ingests high-frequency sensor spikes from the mobile app.
     """
@@ -51,7 +53,6 @@ async def sync_device_sensors(payload: SensorPayload):
     )
     
     if is_critical:
-        # Construct the payload the mobile app needs to render the warning UI
         alert_payload = {
             "type": "CRITICAL_ESCALATION_WARNING",
             "message": "Corroborated threat detected. Initiating SOS sequence.",
@@ -59,11 +60,9 @@ async def sync_device_sensors(payload: SensorPayload):
             "active_triggers": active_triggers
         }
         
-        # 🔥 Push the alert down the WebSocket directly to this specific user's phone
         await manager.send_personal_alert(alert_payload, payload.user_id)
         print(f"🚨 WEBSOCKET PUSHED: Alert sent to {payload.user_id}'s device.")
         
-        # 🔥 NEW: Actually trigger the server-side countdown!
         await start_escalation_countdown(payload.user_id)
 
     return {
