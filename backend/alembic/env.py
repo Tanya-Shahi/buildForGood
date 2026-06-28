@@ -5,7 +5,13 @@ from sqlalchemy import pool
 
 from alembic import context
 from app.db.base_class import Base 
+
+# 🔥 Import ALL your models here so Alembic can see them!
 from app.models.incident_log import IncidentLog
+from app.models.user import User
+from app.models.route import Incident, ColdStartPrior
+from app.models.support import ForumPost, ForumReply  # <-- The new Module 3 models!
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
