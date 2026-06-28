@@ -2,6 +2,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from app.services.fusion_engine import FusionEngine
 from app.services.connection_manager import manager  # Importing your new manager!
+from .escalation import start_escalation_countdown   # 🔥 NEW: Imported the escalation trigger
 
 router = APIRouter()
 
@@ -61,6 +62,9 @@ async def sync_device_sensors(payload: SensorPayload):
         # 🔥 Push the alert down the WebSocket directly to this specific user's phone
         await manager.send_personal_alert(alert_payload, payload.user_id)
         print(f"🚨 WEBSOCKET PUSHED: Alert sent to {payload.user_id}'s device.")
+        
+        # 🔥 NEW: Actually trigger the server-side countdown!
+        await start_escalation_countdown(payload.user_id)
 
     return {
         "status": "evaluated",
