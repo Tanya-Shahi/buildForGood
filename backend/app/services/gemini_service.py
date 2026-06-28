@@ -27,7 +27,7 @@ def process_incident_audio(audio_file_path: str) -> dict:
     - "next_steps": A list of 3 immediate safety or legal steps the user should take.
     """
     
-    # 3. Generate the response using Gemini 3.5 Flash
+    # 3. Generate the response using Gemini 2.5 Flash
     response = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=[prompt, audio_file],
@@ -41,3 +41,19 @@ def process_incident_audio(audio_file_path: str) -> dict:
     
     # 5. Parse the guaranteed JSON string back into a Python dictionary
     return json.loads(response.text)
+
+def transcribe_incident_audio(audio_file_path: str) -> str:
+    """
+    [P0] Takes raw audio from a community incident report and transcribes it to plain text.
+    """
+    audio_file = client.files.upload(file=audio_file_path)
+    
+    prompt = "Listen to this audio and provide a highly accurate, plain-text transcription of what is being said. Translate to English if it is in a regional language."
+    
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[prompt, audio_file]
+    )
+    
+    client.files.delete(name=audio_file.name)
+    return response.text
