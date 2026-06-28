@@ -13,6 +13,10 @@ from app.models.route import Incident
 from app.schemas.route import IncidentCreate, IncidentResponse
 from app.services.gemini_service import transcribe_incident_audio
 
+# 🔥 NEW: Imports for Trust Engine integration
+from app.models.user import User
+from app.services.trust_engine import TrustEngine
+
 router = APIRouter()
 
 # Limit audio uploads to 10 MB
@@ -30,7 +34,11 @@ def report_incident(
     """
     point_wkt = f"POINT({incident_in.longitude} {incident_in.latitude})"
     
+    # 🔥 FIX (Bug 1.6): Get the user's DB ID to attach to the report
+    user = db.query(User).filter(User.username == current_user).first()
+    
     new_incident = Incident(
+        reporter_id=user.id if user else None,  # 🔥 Attached!
         category=incident_in.category,
         description=incident_in.description,
         location=WKTElement(point_wkt, srid=4326)
@@ -93,7 +101,12 @@ async def report_incident_with_audio(
 
     # 3. Save to PostGIS
     point_wkt = f"POINT({longitude} {latitude})"
+    
+    # 🔥 FIX (Bug 1.6): Get the user's DB ID to attach to the report
+    user = db.query(User).filter(User.username == current_user).first()
+    
     new_incident = Incident(
+        reporter_id=user.id if user else None,  # 🔥 Attached!
         category=category,
         description=final_description,
         location=WKTElement(point_wkt, srid=4326)
@@ -141,3 +154,41 @@ def get_active_incidents(
         )
         for incident, lat, lon in records
     ]
+
+# ---------------------------------------------------------
+# NGO / MODERATOR ROUTES (Trust Engine Triggers)
+# ---------------------------------------------------------
+@router.post("/incidents/{incident_id}/verify")
+def verify_community_incident(
+    incident_id: int, 
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """[P1] NGO/Moderator verifies an incident. Rewards the reporter."""
+    incident = db.query(Incident).filter(Incident.id == incident_id).first()
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+        
+    if incident.reporter_id:
+        TrustEngine.reward_user(db, incident.reporter_id)
+        
+    return {"status": "Verified", "message": "Reporter trust score increased."}
+
+@router.post("/incidents/{incident_id}/false_flag")
+def flag_fake_incident(
+    incident_id: int, 
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """[P1] NGO/Moderator marks an incident as fake. Penalizes the reporter and removes the pin."""
+    incident = db.query(Incident).filter(Incident.id == incident_id).first()
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+        
+    incident.is_active = False # Hide from the map
+    
+    if incident.reporter_id:
+        TrustEngine.penalize_user(db, incident.reporter_id)
+        
+    db.commit()
+    return {"status": "Removed", "message": "Incident hidden and reporter penalized."}
