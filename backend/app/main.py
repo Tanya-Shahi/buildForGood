@@ -8,9 +8,10 @@ from app.db.base_class import Base
 from app.models.user import User
 from app.models.route import Incident, ColdStartPrior
 from app.models.support import ForumPost, ForumReply
-from app.models.incident_log import IncidentLog # 🔥 ADDED: Missing IncidentLog model
+from app.models.incident_log import IncidentLog 
+from app.models.shelter import Shelter # 🔥 ADDED: The new Module 2 Shelter model!
 
-# 🔥 ADDED: Imported the support router (which we are about to build!)
+# Imported the routers
 from app.api.v1 import auth, routes, legal, telemetry, live_alerts, escalation, evidence_bridge, sensors, support 
 
 app = FastAPI(
@@ -45,6 +46,4 @@ app.include_router(live_alerts.router, prefix=settings.API_V1_STR + "/alerts", t
 app.include_router(escalation.router, prefix=settings.API_V1_STR + "/escalation", tags=["Emergency Escalation"])
 app.include_router(evidence_bridge.router, prefix="/api/v1/bridge", tags=["Evidence & ML"])
 app.include_router(sensors.router, prefix="/api/v1/sensors", tags=["Device Sensors"])
-
-# 🔥 ADDED: Registered the new Module 3 Peer Support Router
 app.include_router(support.router, prefix="/api/v1/support", tags=["Peer Support & Education"])
