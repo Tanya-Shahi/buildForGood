@@ -1,16 +1,26 @@
+import hashlib
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 from datetime import datetime
 
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, get_current_ngo_user
 from app.models.support import ForumPost, ForumReply
 from app.models.user import User
 from app.services.gemini_service import moderate_forum_post
+from app.core.config import settings
 
 router = APIRouter()
+
+# ---------------------------------------------------------
+# CRYPTOGRAPHIC ANONYMITY HELPER
+# ---------------------------------------------------------
+def generate_pseudonymous_hash(user_id: int) -> str:
+    """Irreversibly hashes the user ID with a system secret."""
+    raw = f"{user_id}:{settings.SECRET_KEY}"
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 class ReplyCreate(BaseModel):
     content: str
@@ -19,7 +29,6 @@ class ReplyResponse(BaseModel):
     id: int
     content: str
     created_at: datetime
-    # Notice we do NOT expose author_id to maintain complete anonymity
 
 class PostCreate(BaseModel):
     title: str
@@ -41,19 +50,15 @@ async def create_anonymous_post(
     current_user: str = Depends(get_current_user)
 ):
     """[P1] Creates a new anonymous post and runs it through the AI Moderator."""
-    # 1. AI Safety Check (Runs in background thread so server doesn't freeze)
     is_crisis = await run_in_threadpool(moderate_forum_post, post_in.content)
-    
-    # 2. Get User
     user = db.query(User).filter(User.username == current_user).first()
     
-    # 3. Save to DB
     new_post = ForumPost(
-        author_id=user.id if user else None,
+        author_hash=generate_pseudonymous_hash(user.id), # 🔥 Structurally Anonymized
         title=post_in.title,
         content=post_in.content,
         category=post_in.category,
-        requires_human_review=is_crisis # 🔥 Hidden from public feed if True!
+        requires_human_review=is_crisis 
     )
     
     db.add(new_post)
@@ -71,7 +76,7 @@ def get_safe_posts(
     """[P1] Fetches all approved, non-crisis posts for the community feed."""
     posts = db.query(ForumPost).filter(
         ForumPost.category == category,
-        ForumPost.requires_human_review == False # 🔥 Only show safe posts!
+        ForumPost.requires_human_review == False 
     ).order_by(ForumPost.created_at.desc()).all()
     
     return posts
@@ -88,14 +93,12 @@ async def create_reply(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
         
-    # AI Safety check for replies too
     is_crisis = await run_in_threadpool(moderate_forum_post, reply_in.content)
-    
     user = db.query(User).filter(User.username == current_user).first()
     
     new_reply = ForumReply(
         post_id=post_id,
-        author_id=user.id if user else None,
+        author_hash=generate_pseudonymous_hash(user.id), # 🔥 Structurally Anonymized
         content=reply_in.content,
         requires_human_review=is_crisis
     )
@@ -105,3 +108,21 @@ async def create_reply(
     db.refresh(new_reply)
     
     return new_reply
+
+# ---------------------------------------------------------
+# 🔥 NEW: MODERATION REVIEW QUEUE
+# ---------------------------------------------------------
+@router.get("/moderation/queue", response_model=List[PostResponse])
+def get_flagged_posts(
+    db: Session = Depends(get_db),
+    ngo_user: User = Depends(get_current_ngo_user) # 🔒 Locked to NGOs only
+):
+    """
+    [P1] Dashboard endpoint for human counsellors to review posts 
+    that the AI flagged for self-harm, crisis, or abuse.
+    """
+    flagged_posts = db.query(ForumPost).filter(
+        ForumPost.requires_human_review == True
+    ).order_by(ForumPost.created_at.desc()).all()
+    
+    return flagged_posts
