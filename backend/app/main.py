@@ -9,10 +9,10 @@ from app.models.user import User
 from app.models.route import Incident, ColdStartPrior
 from app.models.support import ForumPost, ForumReply
 from app.models.incident_log import IncidentLog 
-from app.models.shelter import Shelter # 🔥 ADDED: The new Module 2 Shelter model!
+from app.models.shelter import Shelter 
 
-# Imported the routers
-from app.api.v1 import auth, routes, legal, telemetry, live_alerts, escalation, evidence_bridge, sensors, support 
+# 🔥 FIX: Removed live_alerts from this import list
+from app.api.v1 import auth, routes, legal, telemetry, escalation, evidence_bridge, sensors, support 
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -37,12 +37,11 @@ def startup_event():
 def root_check():
     return {"status": "healthy", "platform": "AWAAZ Women's Safety System", "year": 2026}
 
-# Register the endpoints
+# Register the endpoints (live_alerts removed)
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(routes.router, prefix=settings.API_V1_STR + "/routes", tags=["Safe Routes"])
 app.include_router(legal.router, prefix=settings.API_V1_STR + "/legal", tags=["Legal Companion"])
 app.include_router(telemetry.router, prefix=settings.API_V1_STR + "/telemetry", tags=["Telemetry Monitoring"])
-app.include_router(live_alerts.router, prefix=settings.API_V1_STR + "/alerts", tags=["Live Alerts"])
 app.include_router(escalation.router, prefix=settings.API_V1_STR + "/escalation", tags=["Emergency Escalation"])
 app.include_router(evidence_bridge.router, prefix="/api/v1/bridge", tags=["Evidence & ML"])
 app.include_router(sensors.router, prefix="/api/v1/sensors", tags=["Device Sensors"])
