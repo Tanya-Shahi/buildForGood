@@ -1,26 +1,24 @@
 import asyncio
 from typing import Dict
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
+from sqlalchemy.orm import Session
 from app.services.dossier_service import DossierService
 from app.services.notification_service import NotificationService
-from app.api.deps import get_current_user  # 🔥 NEW: Auth dependency
+from app.api.deps import get_current_user, get_db
+from app.models.user import User
 
 router = APIRouter()
 
 # Global dictionary to hold active countdown timers in memory
 active_escalations: Dict[str, asyncio.Task] = {}
 
-@router.post("/sos/start/{user_id}")
-async def start_escalation_countdown(
-    user_id: str,
-    current_user: str = Depends(get_current_user)  # 🔥 FIX: Endpoint locked down
-):
+async def start_escalation_countdown(user_id: str) -> bool:
     """
-    Called by the Fusion Engine. Starts the 10-second countdown.
-    If not cancelled in time, it fires the true SOS.
+    Core countdown logic. Decoupled from the HTTP route so it can be 
+    safely called by sensors.py (Fusion Engine) in the background.
     """
     if user_id in active_escalations:
-        return {"status": "ALREADY_ARMED", "message": "Countdown is already running."}
+        return False
         
     async def countdown_task():
         try:
@@ -35,16 +33,39 @@ async def start_escalation_countdown(
 
     task = asyncio.create_task(countdown_task())
     active_escalations[user_id] = task
+    return True
+
+@router.post("/sos/start")
+async def trigger_manual_sos_route(
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """[P0] Manual panic button trigger. 🔥 BOLA FIXED: Identity derived from token."""
+    user = db.query(User).filter(User.username == current_user).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    user_id_str = str(user.id)
+    started = await start_escalation_countdown(user_id_str)
     
+    if not started:
+        return {"status": "ALREADY_ARMED", "message": "Countdown is already running."}
+        
     return {"status": "COUNTDOWN_STARTED", "seconds_remaining": 10}
 
-@router.post("/sos/cancel/{user_id}")
+
+@router.post("/sos/cancel")
 async def cancel_escalation(
-    user_id: str,
-    current_user: str = Depends(get_current_user)  # 🔥 FIX: Endpoint locked down
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
 ):
-    """Hits the brakes on the countdown if it's a false alarm."""
-    task = active_escalations.get(user_id)
+    """[P0] Hits the brakes on the countdown. 🔥 BOLA FIXED: Identity derived from token."""
+    user = db.query(User).filter(User.username == current_user).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    user_id_str = str(user.id)
+    task = active_escalations.get(user_id_str)
     if task:
         task.cancel()
         return {"status": "CANCELLED", "message": "SOS system disarmed."}
