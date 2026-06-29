@@ -73,23 +73,26 @@ async def trigger_sos_escalation(user_id: str):
         print(f"Failed to compile dossier: {dossier['error']}")
         return
         
-    # 🔥 FIX: Automatic Archiving
+    # 🔥 FIX (Bug 2.1): Only archive if real coordinates exist
     db = SessionLocal()
     try:
-        lat = dossier.get("last_known_location", {}).get("lat", 0)
-        lon = dossier.get("last_known_location", {}).get("lon", 0)
+        lat = dossier.get("last_known_location", {}).get("lat")
+        lon = dossier.get("last_known_location", {}).get("lon")
         
-        new_log = IncidentLog(
-            incident_id=dossier["incident_id"],
-            user_id=dossier["user_id"],
-            latitude=lat,
-            longitude=lon,
-            geom=f"SRID=4326;POINT({lon} {lat})",
-            evidence_payload=dossier
-        )
-        db.add(new_log)
-        db.commit()
-        print(f"✅ Dossier securely archived for incident {dossier['incident_id']}")
+        if lat is None or lon is None:
+            print(f"⚠️ WARNING: Skipping auto-archive for {dossier['incident_id']}. No GPS history available.")
+        else:
+            new_log = IncidentLog(
+                incident_id=dossier["incident_id"],
+                user_id=dossier["user_id"],
+                latitude=lat,
+                longitude=lon,
+                geom=f"SRID=4326;POINT({lon} {lat})",
+                evidence_payload=dossier
+            )
+            db.add(new_log)
+            db.commit()
+            print(f"✅ Dossier securely archived for incident {dossier['incident_id']}")
     finally:
         db.close()
         
