@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.api import deps
-from app.api.deps import get_current_user, get_current_ngo_user # 🔥 NEW: NGO Bouncer imported
+from app.api.deps import get_current_user, get_current_ngo_user
 from app.models.incident_log import IncidentLog
 from app.models.user import User
 from app.services.ml_feedback_service import MLFeedbackService
@@ -20,8 +20,12 @@ async def archive_sos_dossier(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
         
-    # BOLA FIXED: Silently overwrite any client-provided ID with the verified one
     dossier["user_id"] = str(user.id)
+    
+    # 🔥 FIX (Bug 2.3): Check for duplicate archive to prevent 500 crash
+    existing_log = db.query(IncidentLog).filter(IncidentLog.incident_id == dossier["incident_id"]).first()
+    if existing_log:
+        return {"status": "Already Archived", "message": "This dossier was automatically archived during the SOS escalation."}
     
     loc = dossier.get("last_known_location")
     if not loc or "lat" not in loc or "lon" not in loc:
@@ -50,7 +54,7 @@ async def verify_incident_and_learn(
     incident_id: str, 
     background_tasks: BackgroundTasks, 
     db: Session = Depends(deps.get_db),
-    ngo_user: User = Depends(get_current_ngo_user) # 🔥 ROLE LOCK APPLIED
+    ngo_user: User = Depends(get_current_ngo_user) 
 ):
     incident = db.query(IncidentLog).filter(IncidentLog.incident_id == incident_id).first()
     if not incident:
@@ -81,7 +85,7 @@ async def verify_incident_and_learn(
 async def fetch_ngo_dashboard_events(
     limit: int = 50,
     db: Session = Depends(deps.get_db),
-    ngo_user: User = Depends(get_current_ngo_user) # 🔥 ROLE LOCK APPLIED
+    ngo_user: User = Depends(get_current_ngo_user) 
 ):
     """
     [P1] Tier-2 Responder Dashboard: Fetches all escalated SOS events 
