@@ -13,5 +13,7 @@ class User(Base):
     hashed_duress_pin = Column(String, nullable=True) 
     reputation_score = Column(Float, default=1.0) 
     is_active = Column(Boolean, default=True)
+    
+    is_ngo = Column(Boolean, default=False, index=True)
 
     reported_incidents = relationship("Incident", back_populates="reporter")
