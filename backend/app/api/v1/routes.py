@@ -1,4 +1,3 @@
-# app/api/v1/routes.py
 import os
 import shutil
 import tempfile
@@ -8,7 +7,7 @@ from sqlalchemy.orm import Session
 from geoalchemy2.elements import WKTElement
 from sqlalchemy import func
 
-from app.api.deps import get_db, get_current_user, get_current_ngo_user # 🔥 NEW: NGO Bouncer imported
+from app.api.deps import get_db, get_current_user, get_current_ngo_user
 from app.models.route import Incident
 from app.schemas.route import IncidentCreate, IncidentResponse
 from app.services.gemini_service import transcribe_incident_audio
@@ -19,7 +18,6 @@ from app.services.trust_engine import TrustEngine
 
 router = APIRouter()
 
-# Limit audio uploads to 10 MB
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 
 
 @router.post("/incidents", response_model=IncidentResponse)
@@ -28,17 +26,11 @@ def report_incident(
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)  
 ):
-    """
-    [P0] Submit a new community incident report (Text Only).
-    Converts frontend Lat/Lon into a PostGIS spatial point.
-    """
     point_wkt = f"POINT({incident_in.longitude} {incident_in.latitude})"
-    
-    # Get the user's DB ID to attach to the report
     user = db.query(User).filter(User.username == current_user).first()
     
     new_incident = Incident(
-        reporter_id=user.id if user else None,  # Attached!
+        reporter_id=user.id if user else None,  
         category=incident_in.category,
         description=incident_in.description,
         location=WKTElement(point_wkt, srid=4326)
@@ -59,7 +51,6 @@ def report_incident(
     )
 
 def process_and_transcribe(upload_file: UploadFile, safe_filename: str) -> str:
-    """Thread-safe helper to save the file and call Gemini for transcription."""
     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(safe_filename)[1]) as tmp:
         shutil.copyfileobj(upload_file.file, tmp)
         temp_path = tmp.name
@@ -73,17 +64,13 @@ def process_and_transcribe(upload_file: UploadFile, safe_filename: str) -> str:
 @router.post("/incidents/voice", response_model=IncidentResponse)
 async def report_incident_with_audio(
     category: str = Form(...),
-    description: str = Form(""), # Make description optional for voice reports
+    description: str = Form(""), 
     latitude: float = Form(...),
     longitude: float = Form(...),
     audio_file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
-    """
-    [P0] Submit an incident with an attached voice note.
-    Audio is transcribed via Gemini in the background before saving.
-    """
     valid_extensions = ('.wav', '.mp3', '.m4a', '.ogg', '.webm')
     safe_filename = os.path.basename(audio_file.filename)
     
@@ -93,20 +80,14 @@ async def report_incident_with_audio(
     if audio_file.size and audio_file.size > MAX_FILE_SIZE_BYTES:
         raise HTTPException(status_code=413, detail="File too large. Max 10MB.")
 
-    # 1. Transcribe the audio without freezing the server
     transcript = await run_in_threadpool(process_and_transcribe, audio_file, safe_filename)
-    
-    # 2. Append the AI transcript to the user's description
     final_description = f"{description}\n\n[Voice Transcript]: {transcript}".strip() if transcript else description
 
-    # 3. Save to PostGIS
     point_wkt = f"POINT({longitude} {latitude})"
-    
-    # Get the user's DB ID to attach to the report
     user = db.query(User).filter(User.username == current_user).first()
     
     new_incident = Incident(
-        reporter_id=user.id if user else None,  # Attached!
+        reporter_id=user.id if user else None,  
         category=category,
         description=final_description,
         location=WKTElement(point_wkt, srid=4326)
@@ -132,10 +113,6 @@ def get_active_incidents(
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)  
 ):
-    """
-    [P0] Fetch all active incidents for the map frontend.
-    Unpacks PostGIS geometry directly in the query for speed.
-    """
     records = db.query(
         Incident,
         func.ST_Y(Incident.location).label("lat"),
@@ -162,19 +139,22 @@ def get_active_incidents(
 def verify_community_incident(
     incident_id: int, 
     db: Session = Depends(get_db),
-    ngo_user: User = Depends(get_current_ngo_user) # 🔥 ROLE LOCK APPLIED
+    ngo_user: User = Depends(get_current_ngo_user) 
 ):
     """[P1] NGO/Moderator verifies an incident. Rewards the reporter."""
     incident = db.query(Incident).filter(Incident.id == incident_id).first()
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
         
-    # 🔥 PREVENT ABUSE: Cannot verify your own report
     if incident.reporter_id == ngo_user.id:
         raise HTTPException(status_code=403, detail="You cannot verify your own incident report.")
         
     if incident.reporter_id:
         TrustEngine.reward_user(db, incident.reporter_id)
+        
+    # 🔥 FIX (Audit Fields): Record the action
+    incident.verified_by_id = ngo_user.id
+    db.commit()
         
     return {"status": "Verified", "message": "Reporter trust score increased."}
 
@@ -182,18 +162,20 @@ def verify_community_incident(
 def flag_fake_incident(
     incident_id: int, 
     db: Session = Depends(get_db),
-    ngo_user: User = Depends(get_current_ngo_user) # 🔥 ROLE LOCK APPLIED
+    ngo_user: User = Depends(get_current_ngo_user) 
 ):
     """[P1] NGO/Moderator marks an incident as fake. Penalizes the reporter and removes the pin."""
     incident = db.query(Incident).filter(Incident.id == incident_id).first()
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
         
-    # 🔥 PREVENT ABUSE: Cannot false-flag your own report
     if incident.reporter_id == ngo_user.id:
         raise HTTPException(status_code=403, detail="You cannot flag your own incident report.")
         
-    incident.is_active = False # Hide from the map
+    incident.is_active = False 
+    
+    # 🔥 FIX (Audit Fields): Record the action
+    incident.flagged_by_id = ngo_user.id
     
     if incident.reporter_id:
         TrustEngine.penalize_user(db, incident.reporter_id)
