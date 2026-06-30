@@ -1,42 +1,53 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import MapView, { Polyline, Marker } from 'react-native-maps';
-import apiClient from '../api/client';
+import React, { useEffect, useState } from "react";
+import { StyleSheet, View, Text } from "react-native";
+import MapView, { Marker } from "react-native-maps";
+import apiClient from "../api/client";
 
 export const SafetyMap = () => {
-  const [routeCoordinates, setRouteCoordinates] = useState([]);
+  const [incidents, setIncidents] = useState<any[]>([]);
 
   useEffect(() => {
-    // Fetch calculated route from your backend's routing engine
-    const fetchRoute = async () => {
+    const fetchIncidents = async () => {
       try {
-        const response = await apiClient.get('/routes/get-optimized-path');
-        setRouteCoordinates(response.data.path);
+        // PROD FIX 2.2: Calling the real endpoint that returns actual database pins
+        const response = await apiClient.get("/routes/incidents");
+        setIncidents(response.data);
       } catch (error) {
-        console.error('Map loading failed', error);
+        console.error("Map loading failed", error);
       }
     };
-    fetchRoute();
+    fetchIncidents();
   }, []);
 
   return (
     <View style={styles.container}>
-      <MapView 
+      <MapView
         style={styles.map}
         initialRegion={{
-          latitude: 28.9845, // Central
-          longitude: 77.7064, // Meerut coordinates
+          latitude: 28.9845,
+          longitude: 77.7064,
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
       >
-        <Polyline coordinates={routeCoordinates} strokeWidth={4} strokeColor="#2563eb" />
+        {incidents.map((incident, index) => (
+          <Marker
+            key={index}
+            coordinate={{
+              latitude: incident.latitude,
+              longitude: incident.longitude,
+            }}
+            title={incident.category || "Incident"}
+            description={incident.description}
+            pinColor={incident.verified_by_id ? "red" : "orange"} // Red if NGO verified, Orange if pending
+          />
+        ))}
       </MapView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, height: 300, borderRadius: 16, overflow: 'hidden' },
-  map: { width: '100%', height: '100%' },
+  container: { flex: 1, height: 300, borderRadius: 16, overflow: "hidden" },
+  map: { width: "100%", height: "100%" },
 });
