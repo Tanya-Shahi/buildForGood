@@ -1,68 +1,108 @@
-import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, FlatList, Text, StyleSheet } from 'react-native';
-import apiClient from '../api/client';
+import React, { useState } from "react";
+import {
+  View,
+  TextInput,
+  TouchableOpacity,
+  Text,
+  StyleSheet,
+  Alert,
+  ScrollView,
+} from "react-native";
+import apiClient from "../api/client";
 
 export default function AssistantScreen() {
-  const [messages, setMessages] = useState<{id: string, text: string, sender: 'user' | 'ai'}[]>([]);
-  const [input, setInput] = useState('');
+  const [query, setQuery] = useState("");
+  const [response, setResponse] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  const submitLegalQuery = async () => {
+    if (!query.trim()) return;
 
-    const userMsg = { id: Date.now().toString(), text: input, sender: 'user' as const };
-    setMessages(prev => [userMsg, ...prev]);
-    setInput('');
-
+    setIsProcessing(true);
     try {
-      // Connects to your backend gemini_service.py
-      const response = await apiClient.post('/support/ask-gemini', { query: input });
-      const aiMsg = { id: (Date.now() + 1).toString(), text: response.data.answer, sender: 'ai' as const };
-      setMessages(prev => [aiMsg, ...prev]);
+      // PROD FIX 2.3: Call the actual backend endpoint that handles AI Legal queries
+      const res = await apiClient.post("/legal/intake", {
+        text_fallback: query,
+      });
+      setResponse(
+        res.data.advice || "Your query has been logged for NGO legal review.",
+      );
+      setQuery("");
     } catch (error) {
-      console.error(error);
+      Alert.alert("Error", "Could not reach legal AI services.");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={messages}
-        inverted
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <View style={[styles.bubble, item.sender === 'user' ? styles.userBubble : styles.aiBubble]}>
-            <Text style={item.sender === 'user' ? styles.userText : styles.aiText}>
-              {item.text}
-            </Text>
-          </View>
-        )}
+      <Text style={styles.header}>Legal Rights & Advice</Text>
+      <Text style={styles.sub}>
+        Ask a question regarding workplace harassment, domestic rights, or legal
+        protections. Our AI will guide you.
+      </Text>
+
+      <TextInput
+        style={styles.input}
+        value={query}
+        onChangeText={setQuery}
+        placeholder="e.g., What are my rights if..."
+        multiline
       />
-      <View style={styles.inputContainer}>
-        <TextInput 
-          style={styles.input} 
-          value={input} 
-          onChangeText={setInput} 
-          placeholder="Ask about safety..." 
-        />
-        <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
-          <Text style={styles.sendText}>Send</Text>
-        </TouchableOpacity>
-      </View>
+
+      <TouchableOpacity
+        style={[styles.button, isProcessing && { opacity: 0.6 }]}
+        onPress={submitLegalQuery}
+        disabled={isProcessing}
+      >
+        <Text style={styles.buttonText}>
+          {isProcessing ? "Analyzing..." : "Submit Query"}
+        </Text>
+      </TouchableOpacity>
+
+      {response ? (
+        <ScrollView style={styles.responseBox}>
+          <Text style={styles.responseLabel}>Guidance:</Text>
+          <Text style={styles.responseText}>{response}</Text>
+        </ScrollView>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f3f4f6' },
-  listContent: { padding: 8 },
-  bubble: { padding: 12, borderRadius: 16, marginVertical: 4, maxWidth: '80%' },
-  userBubble: { alignSelf: 'flex-end', backgroundColor: '#2563eb' },
-  aiBubble: { alignSelf: 'flex-start', backgroundColor: '#e5e7eb' },
-  userText: { color: '#ffffff', fontSize: 16 },
-  aiText: { color: '#1f2937', fontSize: 16 },
-  inputContainer: { flexDirection: 'row', padding: 16, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e5e7eb' },
-  input: { flex: 1, borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 10, backgroundColor: '#f9fafb' },
-  sendButton: { marginLeft: 8, justifyContent: 'center', paddingHorizontal: 16, backgroundColor: '#2563eb', borderRadius: 8 },
-  sendText: { color: '#fff', fontWeight: '600' }
+  container: { flex: 1, padding: 20, backgroundColor: "#f3f4f6" },
+  header: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#111827",
+    marginBottom: 10,
+  },
+  sub: { fontSize: 14, color: "#4b5563", marginBottom: 20 },
+  input: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    padding: 15,
+    height: 120,
+    textAlignVertical: "top",
+    marginBottom: 20,
+  },
+  button: {
+    backgroundColor: "#4f46e5",
+    padding: 16,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  buttonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  responseBox: {
+    marginTop: 30,
+    padding: 20,
+    backgroundColor: "#e0e7ff",
+    borderRadius: 8,
+  },
+  responseLabel: { fontWeight: "bold", color: "#3730a3", marginBottom: 10 },
+  responseText: { color: "#312e81", lineHeight: 22 },
 });
